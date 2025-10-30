@@ -8,9 +8,8 @@ from adafruit_bno08x import (
     BNO_REPORT_ACCELEROMETER,
     BNO_REPORT_LINEAR_ACCELERATION,
     BNO_REPORT_GYROSCOPE,
-    BNO_REPORT_MAGNETOMETER,
     BNO_REPORT_GRAVITY,
-    BNO_REPORT_ROTATION_VECTOR,
+    BNO_REPORT_GAME_ROTATION_VECTOR,  # <-- usiamo questo
 )
 
 G0 = 9.80665  # m/s^2
@@ -58,19 +57,14 @@ def enable_compat(bno, feature, report_us=100_000):
         bno.enable_feature(feature)
 
 def read_safe(getter, n):
-    """Restituisce tuple di n elementi o (None,)*n.
-       Ignora RuntimeError/KeyError/OSError dovuti a pacchetti sconosciuti o glitch I2C."""
+    """Ritorna tuple di n o (None,)*n ignorando QUALSIASI errore del driver."""
     try:
         vals = getter
         if vals is None:
             return (None,)*n
         return vals
-    except (RuntimeError, KeyError, OSError) as e:
-        # opzionale: logga su stderr se vuoi debug
-        # print(f"[IGNORA] {type(e).__name__}: {e}", file=sys.stderr)
-        return (None,)*n
     except Exception as e:
-        # qualsiasi altro problema: non far crashare il loop
+        # Se vuoi fare debug, scommenta:
         # print(f"[IGNORA] {type(e).__name__}: {e}", file=sys.stderr)
         return (None,)*n
 
@@ -80,21 +74,20 @@ def main():
     i2c = busio.I2C(board.SCL, board.SDA)
     bno = BNO08X_I2C(i2c)
 
-    # Prova a spegnere il debug interno se abilitato da build
+    # Prova a spegnere verbose interni (se presenti)
     try:
         if getattr(bno, "_debug", False):
             bno._debug = False
     except Exception:
         pass
 
-    # Riduciamo i rate a 10 Hz (100_000 us) per limitare i batch lunghi
+    # Rate bassi per iniziare (10 Hz)
     rates = {
-        BNO_REPORT_ACCELEROMETER:       100_000,  # ~10 Hz
-        BNO_REPORT_LINEAR_ACCELERATION: 100_000,
-        BNO_REPORT_GYROSCOPE:           100_000,
-        BNO_REPORT_MAGNETOMETER:        200_000,  # ~5 Hz
-        BNO_REPORT_GRAVITY:             100_000,
-        BNO_REPORT_ROTATION_VECTOR:     100_000,
+        BNO_REPORT_ACCELEROMETER:        100_000,
+        BNO_REPORT_LINEAR_ACCELERATION:  100_000,
+        BNO_REPORT_GYROSCOPE:            100_000,
+        BNO_REPORT_GRAVITY:              100_000,
+        BNO_REPORT_GAME_ROTATION_VECTOR: 100_000,  # niente magnetometro
     }
     for feat, us in rates.items():
         try:
@@ -104,14 +97,14 @@ def main():
 
     time.sleep(0.5)  # warm-up
 
-    # Calibrazione yaw di montaggio (2s, kart fermo e dritto)
+    # Calibrazione yaw di montaggio con GAME quaternion (2s, kart fermo e dritto)
     yaw_acc = 0.0
     n_yaw = 0
     t0 = time.monotonic()
     while time.monotonic() - t0 < 2.0:
-        qi, qj, qk, qr = read_safe(bno.quaternion, 4)
-        if None not in (qi, qj, qk, qr):
-            yaw, pitch, roll = quat_to_euler_deg(qi, qj, qk, qr)
+        gi, gj, gk, gr = read_safe(bno.game_quaternion, 4)
+        if None not in (gi, gj, gk, gr):
+            yaw, pitch, roll = quat_to_euler_deg(gi, gj, gk, gr)
             yaw_acc += yaw
             n_yaw += 1
         time.sleep(0.02)
@@ -124,13 +117,13 @@ def main():
     print("-" * 150)
     header = (
         "ACC[m/s^2] ax ay az | LINACC[m/s^2] lax lay laz | G[m/s^2] gx gy gz | "
-        "GYRO[°/s] wx wy wz | MAG[µT] mx my mz | EULER[°] yaw pitch roll | "
+        "GYRO[°/s] wx wy wz | EULER(game)[°] yaw pitch roll | "
         "G long lat vert | |G|"
     )
     print(header)
     print("-" * 150)
 
-    target_hz = 20.0   # 20 Hz stampa/lettura (coerente con report 10 Hz)
+    target_hz = 20.0   # 20 Hz stampa/lettura (coerente con 10 Hz di report)
     dt = 1.0 / target_hz
     next_t = time.monotonic()
 
@@ -140,14 +133,14 @@ def main():
             lax, lay, laz  = read_safe(bno.linear_acceleration, 3)
             gx, gy, gz     = read_safe(bno.gravity, 3)
             wx, wy, wz     = read_safe(bno.gyro, 3)
-            mx, my, mz     = read_safe(bno.magnetic, 3)
-            qi, qj, qk, qr = read_safe(bno.quaternion, 4)
 
-            if None not in (qi, qj, qk, qr):
-                yaw, pitch, roll = quat_to_euler_deg(qi, qj, qk, qr)
+            gi, gj, gk, gr = read_safe(bno.game_quaternion, 4)  # <-- più robusto
+            if None not in (gi, gj, gk, gr):
+                yaw, pitch, roll = quat_to_euler_deg(gi, gj, gk, gr)
             else:
                 yaw = pitch = roll = None
 
+            # G long/lat/vert dal frame veicolo
             if None not in (lax, lay, laz) and None not in (yaw, pitch, roll):
                 ax_lvl, ay_lvl, az_lvl = rot_rx((lax, lay, laz), roll)
                 ax_lvl, ay_lvl, az_lvl = rot_ry((ax_lvl, ay_lvl, az_lvl), pitch)
@@ -164,7 +157,6 @@ def main():
                 f"{fmt(lax)} {fmt(lay)} {fmt(laz)} | "
                 f"{fmt(gx)} {fmt(gy)} {fmt(gz)} | "
                 f"{fmt(wx)} {fmt(wy)} {fmt(wz)} | "
-                f"{fmt(mx)} {fmt(my)} {fmt(mz)} | "
                 f"{fmt(yaw)} {fmt(pitch)} {fmt(roll)} | "
                 f"{fmt(Glong)} {fmt(Glat)} {fmt(Gvert)} | {fmt(Gtot)}"
             )
