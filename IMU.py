@@ -126,3 +126,20 @@ def main():
                 f"{safe(gx)} {safe(gy)} {safe(gz)} | "
                 f"{safe(wx)} {safe(wy)} {safe(wz)} | "
                 f"{safe(mx)} {safe(my)} {safe(mz)} | "
+                f"{safe(yaw)} {safe(pitch)} {safe(roll)} | "
+                f"{safe(Gx)} {safe(Gy)} {safe(Gz)} |{safe(Gtot)}"
+            )
+            print(line, flush=True)
+
+            next_t += dt
+            sleep_t = next_t - time.monotonic()
+            if sleep_t > 0:
+                time.sleep(sleep_t)
+            else:
+                next_t = time.monotonic()
+
+    except KeyboardInterrupt:
+        print("\nUscita. Bye!")
+
+if __name__ == "__main__":
+    main()
