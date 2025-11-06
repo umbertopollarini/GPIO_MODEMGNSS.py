@@ -1,0 +1,29 @@
+/dev/ttyS0
+115200
+connect "/usr/sbin/chat -v -f /etc/chatscripts/gprs"
+
+noauth
+defaultroute
+usepeerdns
+noipdefault
+persist
+debug
+
+# MTU/MRU con margine rispetto a 1408
+mtu 1400
+mru 1400
+
+# Recovery rapido e meno jitter
+lcp-echo-failure 3
+lcp-echo-interval 20
+holdoff 5
+maxfail 0
+
+# Evita compressioni inutili
+novj
+nobsdcomp
+nodeflate
+nopcomp
+noaccomp
+
+logfile /var/log/ppp-gprs.log
