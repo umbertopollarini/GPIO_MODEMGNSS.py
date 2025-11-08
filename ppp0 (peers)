@@ -5,6 +5,6 @@ modem
 noauth
 defaultroute
 usepeerdns
-connect "/usr/sbin/chat -v -f /etc/ppp/chatscripts/a7670e"
+connect "/usr/sbin/chat -v -f /etc/ppp/chatscripts/ppp0"
 persist
 #nodetach
