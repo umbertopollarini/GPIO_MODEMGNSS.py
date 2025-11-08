@@ -60,7 +60,7 @@ echo "[*] Installo librerie Python per l'utente ${PI_USER} con pip3 --user…"
 apt-get install -y python3-pip
 
 # installo nei path utente (~/.local)
-sudo -u "${PI_USER}" -H pip3 install --user pynmea2 pyserial
+sudo -u "${PI_USER}" -H pip3 install --user pynmea2 pyserial --break-system-packages
 
 # ───── 5) File PPP: chatscript e peers ─────
 echo "[*] Scrivo chatscript PPP in /etc/chatscripts/ppp0"
