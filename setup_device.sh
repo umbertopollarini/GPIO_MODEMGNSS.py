@@ -71,7 +71,7 @@ usermod -aG dialout,gpio,tty "${PI_USER}"
 # pynmea2 + pyserial (già da apt, ma mettiamo anche via pip per sicurezza versione)
 echo "[*] Installo librerie Python aggiuntive con pip…"
 python3 -m pip install --upgrade pip
-python3 -m pip install pynmea2 pyserial
+python3 -m pip install pynmea2 pyserial --break-system-packages
 
 # ───── 5) File PPP: chatscript e peers ─────
 echo "[*] Scrivo chatscript PPP in /etc/chatscripts/ppp0"
