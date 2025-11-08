@@ -76,7 +76,7 @@ python3 -m pip install pynmea2 pyserial
 # ───── 5) File PPP: chatscript e peers ─────
 echo "[*] Scrivo chatscript PPP in /etc/chatscripts/gprs"
 install -d -m 0755 /etc/chatscripts
-cat > /etc/chatscripts/gprs <<'EOF'
+cat > /etc/chatscripts/ppp0 <<'EOF'
 ABORT "BUSY"
 ABORT "VOICE"
 ABORT "NO CARRIER"
@@ -96,14 +96,14 @@ OK ATD*99#
 TIMEOUT 30
 CONNECT ""
 EOF
-chmod 0644 /etc/chatscripts/gprs
+chmod 0644 /etc/chatscripts/ppp0
 
 echo "[*] Scrivo peers PPP in /etc/ppp/peers/ppp0"
 install -d -m 0755 /etc/ppp/peers
 cat > /etc/ppp/peers/ppp0 <<'EOF'
 /dev/ttyS0
 115200
-connect "/usr/sbin/chat -v -f /etc/chatscripts/gprs"
+connect "/usr/sbin/chat -v -f /etc/chatscripts/ppp0"
 
 noauth
 defaultroute
@@ -129,7 +129,7 @@ nodeflate
 nopcomp
 noaccomp
 
-logfile /var/log/ppp-gprs.log
+logfile /var/log/ppp-ppp0.log
 EOF
 chmod 0644 /etc/ppp/peers/ppp0
 
@@ -196,7 +196,7 @@ echo
 echo "────────────────────────────────────────────────────────────────────"
 echo " FATTO!"
 echo " - UART abilitata (potrebbe essere necessario un riavvio per /boot/*)."
-echo " - PPP configurato (peers: /etc/ppp/peers/ppp0, chat: /etc/chatscripts/gprs)."
+echo " - PPP configurato (peers: /etc/ppp/peers/ppp0, chat: /etc/chatscripts/ppp0)."
 echo " - Servizi:"
 echo "     • ppp0.service            (pppd call ppp0, persist)"
 echo "     • gpio-modemgnss.service  (esegue il tuo Python)"
