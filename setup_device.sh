@@ -3,11 +3,11 @@ set -euo pipefail
 
 # ────────────────────────────────────────────────────────────────────
 #  Setup modem SIMCom A7670E (PPP) + Python GNSS sender su Raspberry Pi
+#  - Abilita UART + I2C
 #  - Installa pacchetti necessari
-#  - Configura UART, PPP, chat/peers
-#  - Installa librerie Python
-#  - Crea servizi systemd: ppp0.service + gpio-modemgnss.service
-#  - Avvia i servizi
+#  - Configura PPP (chat + peers)
+#  - Installa librerie Python con pip3 --user (senza venv)
+#  - Crea servizi systemd (PPP + Python) e li avvia
 #  Esegui come root: sudo ./setup_modem_gnss.sh
 # ────────────────────────────────────────────────────────────────────
 
@@ -33,45 +33,34 @@ echo "[*] Aggiornamento pacchetti…"
 apt-get update -y
 
 echo "[*] Installo dipendenze APT…"
-# ppp + chat per la connessione dati; python + moduli, GPIO, seriale
 apt-get install -y \
   ppp pppconfig screen \
   usb-modeswitch \
-  python3 python3-pip python3-venv \
-  python3-serial python3-rpi.gpio \
+  python3 python3-pip python3-serial python3-rpi.gpio \
   minicom \
   raspi-config \
-  dos2unix
+  dos2unix \
+  i2c-tools
 
-# ModemManager (se presente) talvolta interferisce: meglio disabilitare
+# ModemManager (se presente) può bloccare le porte seriali del modem
 #systemctl disable --now ModemManager 2>/dev/null || true
 
-# ───── 2) Abilita UART su Raspberry Pi ─────
-# (necessario per /dev/ttyS0. Disabilita la serial console e abilita UART)
-#CONFIG_TXT="/boot/config.txt"
-#[[ -f /boot/firmware/config.txt ]] && CONFIG_TXT="/boot/firmware/config.txt"
-
-#echo "[*] Abilito UART nel file: ${CONFIG_TXT}"
-#if ! grep -q "^enable_uart=1" "${CONFIG_TXT}"; then
-#  echo "enable_uart=1" >> "${CONFIG_TXT}"
-#fi
-
-#CMDLINE="/boot/cmdline.txt"
-#[[ -f /boot/firmware/cmdline.txt ]] && CMDLINE="/boot/firmware/cmdline.txt"
-#if grep -q "console=serial0,115200" "${CMDLINE}"; then
-#  echo "[*] Rimuovo console seriale da cmdline"
-#  sed -i -E 's/\s*console=serial0,115200//g' "${CMDLINE}"
-#fi
+# ───── 2) Abilita UART e I2C (non interattivo) ─────
+#echo "[*] Abilito UART e I2C…"
+#raspi-config nonint do_serial 2   # disabilita console seriale, abilita UART
+#raspi-config nonint do_i2c 0      # abilita I2C
 
 # ───── 3) Gruppi / permessi utili ─────
-echo "[*] Aggiungo ${PI_USER} ai gruppi dialout, gpio, tty…"
-usermod -aG dialout,gpio,tty "${PI_USER}"
+#echo "[*] Aggiungo ${PI_USER} ai gruppi dialout, gpio, tty, i2c…"
+#usermod -aG dialout,gpio,tty,i2c "${PI_USER}"
 
-# ───── 4) Librerie Python via pip (extra) ─────
-# pynmea2 + pyserial (già da apt, ma mettiamo anche via pip per sicurezza versione)
-echo "[*] Installo librerie Python aggiuntive con pip…"
-sudo pip3 install --upgrade pip --break-system-packages
-sudo pip3 install pynmea2 pyserial --break-system-packages
+# ───── 4) Librerie Python via pip3 (user install, niente upgrade pip!) ─────
+echo "[*] Installo librerie Python per l'utente ${PI_USER} con pip3 --user…"
+# mi assicuro che pip3 esista (reinstall se necessario)
+apt-get install -y python3-pip
+
+# installo nei path utente (~/.local)
+sudo -u "${PI_USER}" -H pip3 install --user pynmea2 pyserial
 
 # ───── 5) File PPP: chatscript e peers ─────
 echo "[*] Scrivo chatscript PPP in /etc/chatscripts/ppp0"
@@ -153,6 +142,8 @@ EOF
 chmod 0644 /etc/systemd/system/ppp0.service
 
 # ───── 7) Service systemd per lo script Python ─────
+# Nota: User=pi -> Python carica automaticamente i pacchetti da ~/.local
+# Aggiungo PATH con ~/.local/bin per sicurezza.
 echo "[*] Creo servizio systemd per lo script GNSS"
 cat > /etc/systemd/system/gpio-modemgnss.service <<EOF
 [Unit]
@@ -166,10 +157,11 @@ Type=simple
 User=${PI_USER}
 Group=${PI_USER}
 WorkingDirectory=${APP_DIR}
+Environment=PYTHONUNBUFFERED=1
+Environment=PATH=/usr/local/bin:/usr/bin:/bin:${PI_HOME}/.local/bin
 ExecStart=/usr/bin/python3 ${PY_FILE}
 Restart=on-failure
 RestartSec=5
-Environment=PYTHONUNBUFFERED=1
 
 [Install]
 WantedBy=multi-user.target
@@ -187,7 +179,7 @@ systemctl daemon-reload
 systemctl enable ppp0.service
 systemctl enable gpio-modemgnss.service
 
-# Avvio PPP prima, poi il Python (lo unit del Python dipende da ppp0)
+# Avvio PPP prima, poi il Python (dipende da ppp0)
 systemctl restart ppp0.service
 sleep 3
 systemctl restart gpio-modemgnss.service
@@ -195,8 +187,9 @@ systemctl restart gpio-modemgnss.service
 echo
 echo "────────────────────────────────────────────────────────────────────"
 echo " FATTO!"
-#echo " - UART abilitata (potrebbe essere necessario un riavvio per /boot/*)."
+echo " - UART e I2C abilitati (se era attiva la console seriale, può servire un riavvio)."
 echo " - PPP configurato (peers: /etc/ppp/peers/ppp0, chat: /etc/chatscripts/ppp0)."
+echo " - Librerie Python installate per ${PI_USER} in ~/.local"
 echo " - Servizi:"
 echo "     • ppp0.service            (pppd call ppp0, persist)"
 echo "     • gpio-modemgnss.service  (esegue il tuo Python)"
