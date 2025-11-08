@@ -8,8 +8,8 @@ Requires=ppp0.service
 Type=simple
 User=pi
 Group=pi
-WorkingDirectory=/home/pi/GPIO_MODEMGNSS.py
-ExecStart=/usr/bin/python3 /home/pi/GPIO_MODEMGNSS.py/GPIO_MODEMGNSS.py
+WorkingDirectory=/home/pi/DEVICE_RACESENSE
+ExecStart=/usr/bin/python3 /home/pi/DEVICE_RACESENSE/GPIO_MODEMGNSS.py
 Restart=on-failure
 RestartSec=5
 # ambiente pulito per la seriale
