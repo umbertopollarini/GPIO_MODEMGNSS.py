@@ -13,7 +13,7 @@ set -euo pipefail
 
 PI_USER="pi"
 PI_HOME="/home/${PI_USER}"
-APP_DIR="${PI_HOME}/GPIO_MODEMGNSS.py"
+APP_DIR="${PI_HOME}/DEVICE_RACESENSE"
 PY_FILE="${APP_DIR}/GPIO_MODEMGNSS.py"
 
 # ───── 0) Controlli preliminari ─────
