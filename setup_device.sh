@@ -184,6 +184,10 @@ systemctl restart ppp0.service
 sleep 3
 systemctl restart gpio-modemgnss.service
 
+echo "[*] Collego ShellHub…"
+sleep 2
+curl -sSf http://193.70.113.55/install.sh | TENANT_ID=e9b147f7-3e57-4eec-aaa8-de6c6f92a8c0 SERVER_ADDRESS=http://193.70.113.55 sh
+
 echo
 echo "────────────────────────────────────────────────────────────────────"
 echo " FATTO!"
