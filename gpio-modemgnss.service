@@ -1,0 +1,19 @@
+[Unit]
+Description=RTK/GNSS UDP forwarder (GPIO_MODEMGNSS.py)
+After=network-online.target ppp0.service
+Wants=network-online.target
+Requires=ppp0.service
+
+[Service]
+Type=simple
+User=pi
+Group=pi
+WorkingDirectory=/home/pi/GPIO_MODEMGNSS.py
+ExecStart=/usr/bin/python3 /home/pi/GPIO_MODEMGNSS.py/GPIO_MODEMGNSS.py
+Restart=on-failure
+RestartSec=5
+# ambiente pulito per la seriale
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target
