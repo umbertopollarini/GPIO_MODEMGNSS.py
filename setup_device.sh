@@ -44,24 +44,24 @@ apt-get install -y \
   dos2unix
 
 # ModemManager (se presente) talvolta interferisce: meglio disabilitare
-systemctl disable --now ModemManager 2>/dev/null || true
+#systemctl disable --now ModemManager 2>/dev/null || true
 
 # ───── 2) Abilita UART su Raspberry Pi ─────
 # (necessario per /dev/ttyS0. Disabilita la serial console e abilita UART)
-CONFIG_TXT="/boot/config.txt"
-[[ -f /boot/firmware/config.txt ]] && CONFIG_TXT="/boot/firmware/config.txt"
+#CONFIG_TXT="/boot/config.txt"
+#[[ -f /boot/firmware/config.txt ]] && CONFIG_TXT="/boot/firmware/config.txt"
 
-echo "[*] Abilito UART nel file: ${CONFIG_TXT}"
-if ! grep -q "^enable_uart=1" "${CONFIG_TXT}"; then
-  echo "enable_uart=1" >> "${CONFIG_TXT}"
-fi
+#echo "[*] Abilito UART nel file: ${CONFIG_TXT}"
+#if ! grep -q "^enable_uart=1" "${CONFIG_TXT}"; then
+#  echo "enable_uart=1" >> "${CONFIG_TXT}"
+#fi
 
-CMDLINE="/boot/cmdline.txt"
-[[ -f /boot/firmware/cmdline.txt ]] && CMDLINE="/boot/firmware/cmdline.txt"
-if grep -q "console=serial0,115200" "${CMDLINE}"; then
-  echo "[*] Rimuovo console seriale da cmdline"
-  sed -i -E 's/\s*console=serial0,115200//g' "${CMDLINE}"
-fi
+#CMDLINE="/boot/cmdline.txt"
+#[[ -f /boot/firmware/cmdline.txt ]] && CMDLINE="/boot/firmware/cmdline.txt"
+#if grep -q "console=serial0,115200" "${CMDLINE}"; then
+#  echo "[*] Rimuovo console seriale da cmdline"
+#  sed -i -E 's/\s*console=serial0,115200//g' "${CMDLINE}"
+#fi
 
 # ───── 3) Gruppi / permessi utili ─────
 echo "[*] Aggiungo ${PI_USER} ai gruppi dialout, gpio, tty…"
@@ -74,7 +74,7 @@ python3 -m pip install --upgrade pip
 python3 -m pip install pynmea2 pyserial
 
 # ───── 5) File PPP: chatscript e peers ─────
-echo "[*] Scrivo chatscript PPP in /etc/chatscripts/gprs"
+echo "[*] Scrivo chatscript PPP in /etc/chatscripts/ppp0"
 install -d -m 0755 /etc/chatscripts
 cat > /etc/chatscripts/ppp0 <<'EOF'
 ABORT "BUSY"
@@ -195,7 +195,7 @@ systemctl restart gpio-modemgnss.service
 echo
 echo "────────────────────────────────────────────────────────────────────"
 echo " FATTO!"
-echo " - UART abilitata (potrebbe essere necessario un riavvio per /boot/*)."
+#echo " - UART abilitata (potrebbe essere necessario un riavvio per /boot/*)."
 echo " - PPP configurato (peers: /etc/ppp/peers/ppp0, chat: /etc/chatscripts/ppp0)."
 echo " - Servizi:"
 echo "     • ppp0.service            (pppd call ppp0, persist)"
