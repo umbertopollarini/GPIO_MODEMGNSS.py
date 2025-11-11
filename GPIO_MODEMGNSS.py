@@ -39,6 +39,10 @@ CONFIG = {
     "gpio_active_high": True,  # True = porta alta, False = bassa
     "gpio_warmup_sec": 2       # attesa prima di avviare GPS/NTRIP
 }
+
+MAC_ADDR = "1"
+print(f"[INFO] ID DEVICE: {MAC_ADDR}")
+
 # --------------------------------------------------------------------
 
 def get_wlan0_mac():
@@ -75,8 +79,8 @@ def get_wlan0_mac():
     return f"{uuid.getnode():012X}"
 
 # MAC address dell'interfaccia wlan0
-MAC_ADDR = get_wlan0_mac()
-print(f"[INFO] MAC wlan0: {MAC_ADDR}")
+#MAC_ADDR = get_wlan0_mac()
+#print(f"[INFO] MAC wlan0: {MAC_ADDR}")
 
 # ───────────── variabili globali condivise fra i thread ─────────────
 running          = True
