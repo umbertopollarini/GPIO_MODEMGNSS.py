@@ -86,6 +86,7 @@ udp_socks        = []
 gps_data = {
     'speed_kmh': 0.0,
     'timestamp': datetime.datetime.utcnow().strftime("%y%m%d%H%M%S"),
+    'tms': 0,
     'latitude': None,
     'longitude': None,
     'satellites': 0,
@@ -121,31 +122,43 @@ def send_udp(msg: str):
 
 
 def update_timestamp_from_msg(msg):
-    """Aggiorna il timestamp dai dati del messaggio NMEA."""
-    current_time = None
+    """Aggiorna timestamp YYMMDDhhmmss e millisecondi (tms=0..999) da NMEA (UTC)."""
+    current_dt = None
+    tms = None
 
-    # Prova con datestamp + timestamp (RMC)
+    # RMC: data + time (UTC)
     if hasattr(msg, 'datestamp') and hasattr(msg, 'timestamp') and msg.datestamp and msg.timestamp:
         try:
-            current_time = datetime.datetime.combine(msg.datestamp, msg.timestamp)
-        except (AttributeError, ValueError, TypeError):
-            pass
+            # msg.timestamp è un datetime.time, spesso con microsecondi
+            current_dt = datetime.datetime.combine(msg.datestamp, msg.timestamp)
+            tms = getattr(msg.timestamp, 'microsecond', 0) // 1000
+        except Exception:
+            current_dt = None
 
-    # Infine prova solo con timestamp (GGA)
-    if not current_time and hasattr(msg, 'timestamp') and msg.timestamp:
+    # GGA: solo time (UTC) -> combiniamo con la data UTC corrente
+    if not current_dt and hasattr(msg, 'timestamp') and msg.timestamp:
         try:
-            today = datetime.date.today()
-            current_time = datetime.datetime.combine(today, msg.timestamp)
-        except (AttributeError, ValueError, TypeError):
-            pass
+            utc_today = datetime.datetime.utcnow().date()
+            current_dt = datetime.datetime.combine(utc_today, msg.timestamp)
+            tms = getattr(msg.timestamp, 'microsecond', 0) // 1000
+        except Exception:
+            current_dt = None
 
-    if current_time:
+    # Fallback: usa l'orologio di sistema (UTC)
+    if not current_dt:
+        now = datetime.datetime.utcnow()
         with gps_lock:
-            gps_data['timestamp'] = current_time.strftime("%y%m%d%H%M%S")
-            gps_data['last_valid_time'] = current_time
-        return True
+            gps_data['timestamp'] = now.strftime("%y%m%d%H%M%S")
+            gps_data['tms'] = int(now.microsecond / 1000)
+            gps_data['last_valid_time'] = now
+        return False
 
-    return False
+    # Aggiorna stato condiviso
+    with gps_lock:
+        gps_data['timestamp'] = current_dt.strftime("%y%m%d%H%M%S")
+        gps_data['tms'] = int(tms) if tms is not None else int((datetime.datetime.utcnow().microsecond) / 1000)
+        gps_data['last_valid_time'] = current_dt
+    return True
 # --------------------------------------------------------------------
 
 # ───────────────────────── THREAD - GPS ─────────────────────────────
@@ -233,8 +246,10 @@ def gps_worker():
                                     f"{gps_data['satellites']:02d}/"
                                     f"{gps_data['quality']}/"
                                     f"{gps_data['speed_kmh']:.1f}/"
-                                    f"{gps_data['timestamp']}\n"
+                                    f"{gps_data['timestamp']}/"
+                                    f"{int(gps_data['tms'])%1000:03d}\n"
                                 )
+
                         
                         update_timestamp_from_msg(msg)
                         
