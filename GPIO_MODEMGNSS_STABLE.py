@@ -9,6 +9,8 @@ Formato pacchetto:
     MAC/±DD.dddddd7/±DDD.dddddd7/ss/q/vv.v/YYMMDDhhmmss/tms
 """
 
+import os
+import argparse
 import socket
 import threading
 import time
@@ -29,6 +31,9 @@ CONFIG = {
     "gps_baud": 115200,
 
     "destinations": [("193.70.113.55", 8888)],
+
+    # Abilita/disabilita NTRIP (può essere sovrascritto da CLI/env)
+    "enable_ntrip": True,
 
     # Parametri NTRIP (opzionale):
     "ntrip_host": "213.209.192.165",
@@ -377,17 +382,42 @@ def enable_gpio_before_start():
     print(f"[GPIO] Pin BCM {pin} impostato a {'HIGH' if active_high else 'LOW'}. Attesa {warmup}s…")
     time.sleep(warmup)
 
+# ───────────────────────────── CLI / ENV ─────────────────────────────
+def parse_args():
+    p = argparse.ArgumentParser(description="GNSS RTK sender")
+    g = p.add_mutually_exclusive_group()
+    g.add_argument("--no-ntrip", action="store_true", help="Disabilita NTRIP")
+    g.add_argument("--ntrip", action="store_true", help="Forza abilitazione NTRIP")
+    return p.parse_args()
+
+def resolve_ntrip_enabled(args) -> bool:
+    # Ordine di priorità: CLI > ENV > CONFIG
+    if args.no_ntrip:
+        return False
+    if args.ntrip:
+        return True
+    env = os.getenv("NTRIP")
+    if env is not None:
+        return env not in ("0", "false", "False", "NO", "no")
+    return CONFIG.get("enable_ntrip", True)
+
 # ───────────────────────────── MAIN ────────────────────────────────
 if __name__ == "__main__":
+    args = parse_args()
+    enable_ntrip = resolve_ntrip_enabled(args)
+    print(f"[CFG] NTRIP {'ABILITATO' if enable_ntrip else 'DISABILITATO'}")
+
     try:
         enable_gpio_before_start()
         init_udp()
 
-        t_gps   = threading.Thread(target=gps_worker,   daemon=True)
-        t_ntrip = threading.Thread(target=ntrip_worker, daemon=True)
-
+        t_gps = threading.Thread(target=gps_worker, daemon=True)
         t_gps.start()
-        t_ntrip.start()
+
+        # Avvia il thread NTRIP solo se abilitato
+        if enable_ntrip:
+            t_ntrip = threading.Thread(target=ntrip_worker, daemon=True)
+            t_ntrip.start()
 
         while True:
             time.sleep(1)
