@@ -26,7 +26,7 @@ import pynmea2
 
 # ────────────────────────── CONFIGURAZIONE ──────────────────────────
 CONFIG = {
-    # Porta preferita (usata come hint). Se non esiste, si auto-scopre la u-blox.
+    # Usa, se puoi, il path stabile /dev/serial/by-id/... come hint:
     "gps_port_hint": "/dev/ttyACM0",
     "gps_baud": 115200,
 
@@ -50,6 +50,11 @@ CONFIG = {
     # Riconnessione seriale
     "serial_reopen_min": 1.0,
     "serial_reopen_max": 10.0,
+
+    # Nuovo: finestra di retry rapidi (per ridurre la latenza di ripartenza)
+    "serial_fast_retry_window_sec": 5.0,   # per i primi 5 s dopo un errore
+    "serial_fast_retry_interval": 0.1,     # prova ogni 100 ms nella finestra
+
     # Identificazione u-blox (VID/PID classici ZED-F9P CDC-ACM; cambiali se diverso sul tuo dmesg/lsusb)
     "ublox_vid_pid": {("1546", "01a8"), ("1546", "01a9")},  # alcune varianti
     "ublox_name_keywords": ("u-blox", "UBLOX", "GNSS"),
@@ -134,12 +139,14 @@ class SerialManager:
     """
     Mantiene UNA sola seriale aperta verso il F9P.
     Se cade, prova a riaprirla cercando la porta u-blox (VID/PID o nome).
+    Retry molto rapidi nella prima finestra per minimizzare la latenza.
     """
     def __init__(self, baud):
         self.baud = baud
         self.ser = None
         self.stop_evt = threading.Event()
         self.reopen_delay = CONFIG["serial_reopen_min"]
+        self.last_error_ts = None  # per la finestra di retry veloci
 
     def _is_ublox(self, p):
         try:
@@ -156,7 +163,7 @@ class SerialManager:
         return False
 
     def _discover_port(self):
-        # 1) Se hint esiste, provalo prima
+        # 1) Se hint esiste, provalo prima (meglio se è /dev/serial/by-id/…)
         hint = CONFIG.get("gps_port_hint")
         if hint:
             for p in list_ports.comports():
@@ -168,7 +175,6 @@ class SerialManager:
             if self._is_ublox(p):
                 candidates.append(p.device)
         if candidates:
-            # prendi il più “basso” per stabilità apparente
             candidates.sort()
             return candidates[0]
         # 3) fallback: prima ttyACM disponibile
@@ -189,10 +195,11 @@ class SerialManager:
                 self.ser = serial.Serial(
                     port,
                     self.baud,
-                    timeout=1,
-                    exclusive=True  # evita aperture concorrenti da altri processi
+                    timeout=0.2,  # ↓ timeout ridotto per reazione più rapida
+                    exclusive=True
                 )
                 self.reopen_delay = CONFIG["serial_reopen_min"]
+                self.last_error_ts = None
                 print("[SER] OK")
                 return
             except serial.SerialException as e:
@@ -200,8 +207,21 @@ class SerialManager:
                 self._sleep_backoff()
 
     def _sleep_backoff(self):
-        time.sleep(self.reopen_delay)
-        self.reopen_delay = min(CONFIG["serial_reopen_max"], self.reopen_delay * 1.5)
+        # Retry rapidi per i primi N secondi dopo l’errore,
+        # poi passa all’exponential backoff.
+        now = time.monotonic()
+        if self.last_error_ts is None:
+            self.last_error_ts = now
+        elapsed = now - self.last_error_ts
+        if elapsed < CONFIG["serial_fast_retry_window_sec"]:
+            time.sleep(CONFIG["serial_fast_retry_interval"])
+        else:
+            time.sleep(self.reopen_delay)
+            self.reopen_delay = min(CONFIG["serial_reopen_max"], self.reopen_delay * 1.5)
+
+    def _mark_error(self):
+        if self.last_error_ts is None:
+            self.last_error_ts = time.monotonic()
 
     def readlines(self):
         """
@@ -211,13 +231,13 @@ class SerialManager:
             if self.ser is None or not self.ser.is_open:
                 self.open()
             try:
-                raw = self.ser.readline()  # termina a \n o timeout
+                raw = self.ser.readline()
                 if not raw:
-                    # timeout: continua
                     continue
                 yield raw
             except (serial.SerialException, OSError) as e:
                 print(f"[SER] read error: {e}; riapro…")
+                self._mark_error()
                 self._safe_close()
                 self._sleep_backoff()
 
@@ -234,6 +254,7 @@ class SerialManager:
                 return
             except (serial.SerialException, OSError) as e:
                 print(f"[SER] write error: {e}; riapro…")
+                self._mark_error()
                 self._safe_close()
                 self._sleep_backoff()
 
@@ -354,7 +375,6 @@ def ntrip_worker():
                     print("[NTRIP] risposta non valida")
                     raise ConnectionError("bad header")
                 print("[NTRIP] connesso")
-                # Ora inoltra i chunk RTCM alla seriale condivisa
                 while running:
                     data = s.recv(1024)
                     if not data:
@@ -414,7 +434,6 @@ if __name__ == "__main__":
         t_gps = threading.Thread(target=gps_worker, daemon=True)
         t_gps.start()
 
-        # Avvia il thread NTRIP solo se abilitato
         if enable_ntrip:
             t_ntrip = threading.Thread(target=ntrip_worker, daemon=True)
             t_ntrip.start()
